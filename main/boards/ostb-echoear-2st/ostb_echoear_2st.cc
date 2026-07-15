@@ -9,6 +9,7 @@
 #include <freertos/semphr.h>
 #include <freertos/task.h>
 
+#include "adc_battery_monitor.h"
 #include "application.h"
 #include "backlight.h"
 #include "button.h"
@@ -299,6 +300,7 @@ private:
     Backlight* backlight_ = nullptr;
     Cst816s* cst816s_ = nullptr;
     TaskHandle_t touch_task_handle_ = nullptr;
+    AdcBatteryMonitor* battery_monitor_ = nullptr;
     Button boot_button_;
 
     static void touch_isr_callback(void* arg) {
@@ -442,6 +444,9 @@ public:
         InitializeSt77916Display();
         InitializeCst816sTouchPad();
         InitializeButtons();
+        // VBAT via a 100K/100K divider on GPIO17 (ADC2_CH6); the charge
+        // detect net from the schematic is not mapped to a GPIO yet.
+        battery_monitor_ = new AdcBatteryMonitor(ADC_UNIT_2, ADC_CHANNEL_6, 100000, 100000, GPIO_NUM_NC);
     }
 
     virtual AudioCodec* GetAudioCodec() override {
@@ -467,6 +472,16 @@ public:
 
     virtual Backlight* GetBacklight() override {
         return backlight_;
+    }
+
+    virtual bool GetBatteryLevel(int& level, bool& charging, bool& discharging) override {
+        if (battery_monitor_ == nullptr) {
+            return false;
+        }
+        level = battery_monitor_->GetBatteryLevel();
+        charging = battery_monitor_->IsCharging();
+        discharging = battery_monitor_->IsDischarging();
+        return true;
     }
 };
 
