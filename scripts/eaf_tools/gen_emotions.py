@@ -132,9 +132,11 @@ def gen_embarrassed(n=20):
         t = i / n
         shy = ease(t)
         img = canvas(); d = ImageDraw.Draw(img)
-        E(d, 73, 72 + 6 * shy, 44, 44 - 6 * shy, BLOB)
-        blush_a = int(120 + 130 * shy)
-        E(d, 70, 136, 27, 10, (PINK[0], PINK[1], PINK[2], blush_a))
+        E(d, 72, 72 + 5 * shy, 46, 46 - 5 * shy, BLOB)
+        # encoder alpha is binary, so pulse the blush via brightness (bg is black)
+        dim = 0.45 + 0.55 * shy
+        blush = (int(PINK[0] * dim), int(PINK[1] * dim), int(PINK[2] * dim), 255)
+        E(d, 70, 130, 29, 11, blush)
         frames.append(down(img))
     return frames
 
