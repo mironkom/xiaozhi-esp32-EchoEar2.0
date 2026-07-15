@@ -42,6 +42,28 @@ def ease(t):
     return 0.5 - 0.5 * math.cos(t * 2 * math.pi)
 
 
+# ---------------------------------------------------------------- happy (soft)
+# Replaces stock Happy.eaf for the "happy" emote: the same content smile arc,
+# but WITHOUT the flying hearts (hearts now belong to "loving" only) and with
+# a calm slow sway instead of laughing's vigorous bounce.
+def gen_happy_soft(n=24):
+    frames = []
+    for i in range(n):
+        t = i / n
+        sway = 3 * math.sin(t * 2 * math.pi)          # gentle side-to-side
+        breathe = 1.0 + 0.04 * math.sin(t * 2 * math.pi)  # subtle size breathing
+        img = canvas(); d = ImageDraw.Draw(img)
+        cx = CX + sway * 0.5
+        rx, ry = 45 * breathe, 44 * breathe
+        cy = CY + sway * 0.3
+        # thick content arc, slightly wider opening than laughing
+        E(d, cx, cy, rx, ry, BLOB)
+        E(d, cx, cy + 14, rx - 20, ry - 15, (0, 0, 0, 0))
+        d.rectangle([0, (cy + ry * 0.26) * SS, W * SS, H * SS], fill=(0, 0, 0, 0))
+        frames.append(down(img))
+    return frames
+
+
 # ---------------------------------------------------------------- laughing
 # Closed-eye "smile arc" that bounces and squashes, like shaking with laughter.
 def gen_laughing(n=16):
@@ -206,6 +228,7 @@ def gen_relaxed(n=24):
 
 
 GENERATORS = {
+    "happy_soft": gen_happy_soft,
     "laughing": gen_laughing,
     "funny": gen_funny,
     "loving": gen_loving,

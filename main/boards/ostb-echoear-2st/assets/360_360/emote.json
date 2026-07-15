@@ -1,5 +1,5 @@
 [
-    {"emote": "happy", "src": "Happy.eaf", "loop": true, "fps": 20},
+    {"emote": "happy", "src": "happy_soft.eaf", "loop": true, "fps": 20},
     {"emote": "laughing", "src": "laughing.eaf", "loop": true, "fps": 20},
     {"emote": "funny", "src": "funny.eaf", "loop": true, "fps": 20},
     {"emote": "loving", "src": "loving.eaf", "loop": true, "fps": 20},
