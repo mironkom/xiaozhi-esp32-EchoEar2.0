@@ -138,7 +138,13 @@ void EmoteDisplay::SetEmotion(const char* const emotion)
 {
     ESP_LOGI(TAG, "SetEmotion: %s", emotion);
     if (emote_handle_ && emotion && strlen(emotion) > 0) {
-        emote_set_anim_emoji(emote_handle_, emotion);
+        // In standby the app sends the same "neutral" as while listening;
+        // remap it to the dedicated "idle" emote (e.g. a dozing-off loop)
+        if (is_standby_ && std::strcmp(emotion, "neutral") == 0) {
+            emote_set_anim_emoji(emote_handle_, "idle");
+        } else {
+            emote_set_anim_emoji(emote_handle_, emotion);
+        }
     }
 }
 
@@ -163,6 +169,7 @@ void EmoteDisplay::SetStatus(const char* const status)
 {
     ESP_LOGI(TAG, "SetStatus: %s", status);
     if (emote_handle_ && status && strlen(status) > 0) {
+        is_standby_ = (std::strcmp(status, Lang::Strings::STANDBY) == 0);
         if (std::strcmp(status, Lang::Strings::LISTENING) == 0) {
             emote_set_event_msg(emote_handle_, EMOTE_MGR_EVT_LISTEN, NULL);
         } else if (std::strcmp(status, Lang::Strings::STANDBY) == 0) {

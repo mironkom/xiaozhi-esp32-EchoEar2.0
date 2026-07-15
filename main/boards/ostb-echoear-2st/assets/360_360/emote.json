@@ -18,7 +18,7 @@
     {"emote": "relaxed", "src": "relaxed.eaf", "loop": true, "fps": 20},
     {"emote": "confused", "src": "confused.eaf", "loop": true, "fps": 20},
     {"emote": "neutral", "src": "neutral.eaf", "loop": true, "fps": 20},
-    {"emote": "idle", "src": "neutral.eaf", "loop": true, "fps": 20},
+    {"emote": "idle", "src": "dozing.eaf", "loop": true, "fps": 20},
     {"emote": "gear", "src": "confused.eaf", "loop": true, "fps": 20},
     {"emote": "microchip_ai", "src": "winking.eaf", "loop": false, "fps": 20},
     {"emote": "low_battery", "src": "low_battery.eaf", "loop": false, "fps": 20},

@@ -36,6 +36,7 @@ private:
     virtual void Unlock() override;
 
     emote_handle_t emote_handle_ = nullptr;
+    bool is_standby_ = false;
 
 };
 
