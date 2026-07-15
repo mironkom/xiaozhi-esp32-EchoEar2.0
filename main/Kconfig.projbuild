@@ -189,6 +189,9 @@ choice BOARD_TYPE
     config BOARD_TYPE_ESP_VOCAT
         bool "Espressif ESP-VoCat"
         depends on IDF_TARGET_ESP32S3
+    config BOARD_TYPE_OSTB_ECHOEAR_2ST
+        bool "OSTB EchoEar 2.0"
+        depends on IDF_TARGET_ESP32S3
     config BOARD_TYPE_KEVIN_BOX_2
         bool "Kevin Box 2"
         depends on IDF_TARGET_ESP32S3
