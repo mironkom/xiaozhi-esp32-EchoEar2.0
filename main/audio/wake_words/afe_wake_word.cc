@@ -80,6 +80,14 @@ bool AfeWakeWord::Initialize(AudioCodec* codec, srmodel_list_t* models_list) {
     afe_iface_ = esp_afe_handle_from_config(afe_config);
     afe_data_ = afe_iface_->create_from_config(afe_config);
 
+    // TTS-trained wakenet models (e.g. wn9_sophia_tts) ship with strict
+    // thresholds tuned on synthetic speech and often miss real voices;
+    // relax the detection threshold for them (valid range 0.4..0.9999).
+    if (wakenet_model_ != nullptr && strstr(wakenet_model_, "_tts") != nullptr) {
+        afe_iface_->set_wakenet_threshold(afe_data_, 1, 0.50f);
+        ESP_LOGI(TAG, "TTS wakenet model %s: detection threshold relaxed to 0.50", wakenet_model_);
+    }
+
     xTaskCreate([](void* arg) {
         auto this_ = (AfeWakeWord*)arg;
         this_->AudioDetectionTask();

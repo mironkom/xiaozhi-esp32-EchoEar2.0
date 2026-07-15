@@ -138,10 +138,13 @@ void EmoteDisplay::SetEmotion(const char* const emotion)
 {
     ESP_LOGI(TAG, "SetEmotion: %s", emotion);
     if (emote_handle_ && emotion && strlen(emotion) > 0) {
-        // In standby the app sends the same "neutral" as while listening;
-        // remap it to the dedicated "idle" emote (e.g. a dozing-off loop)
+        // The app sends the same "neutral" for standby and listening; give
+        // each state its own look: a waiting blink loop in standby ("idle")
+        // and a steady non-blinking eye while listening ("attentive").
         if (is_standby_ && std::strcmp(emotion, "neutral") == 0) {
             emote_set_anim_emoji(emote_handle_, "idle");
+        } else if (is_listening_ && std::strcmp(emotion, "neutral") == 0) {
+            emote_set_anim_emoji(emote_handle_, "attentive");
         } else {
             emote_set_anim_emoji(emote_handle_, emotion);
         }
@@ -170,6 +173,7 @@ void EmoteDisplay::SetStatus(const char* const status)
     ESP_LOGI(TAG, "SetStatus: %s", status);
     if (emote_handle_ && status && strlen(status) > 0) {
         is_standby_ = (std::strcmp(status, Lang::Strings::STANDBY) == 0);
+        is_listening_ = (std::strcmp(status, Lang::Strings::LISTENING) == 0);
         if (std::strcmp(status, Lang::Strings::LISTENING) == 0) {
             emote_set_event_msg(emote_handle_, EMOTE_MGR_EVT_LISTEN, NULL);
         } else if (std::strcmp(status, Lang::Strings::STANDBY) == 0) {

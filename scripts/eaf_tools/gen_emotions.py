@@ -233,10 +233,10 @@ def gen_relaxed(n=24):
 
 
 # ---------------------------------------------------------------- dozing
-# Standby loop (~10s): awake blinks, eyelid slowly droops, fights sleep once,
-# dozes off (breathing slit + rising dream bubbles), then startles awake.
-# Bubbles are plain circles: letterforms like "Z" would mirror into garbage
-# on the right eye.
+# Standby loop (~8s): a calm waiting eye. Stays open the whole time — blinks
+# at uneven intervals (single and double) and once glances down briefly, as
+# if idly looking at the floor. Horizontal glances are impossible here: the
+# right eye is mirrored, so any sideways drift makes the pair cross-eyed.
 def smoothstep(a, b, t):
     if t <= a:
         return 0.0
@@ -246,46 +246,37 @@ def smoothstep(a, b, t):
     return x * x * (3 - 2 * x)
 
 
-def gen_dozing(n=200):
+def gen_dozing(n=160):
     frames = []
     for i in range(n):
         t = i / n
-        # eyelid openness: 1 = wide awake, 0 = shut
         open_f = 1.0
-        open_f -= 0.55 * smoothstep(0.22, 0.40, t)   # slow droop to half-lidded
-        open_f += 0.30 * smoothstep(0.40, 0.46, t)   # catches itself, lifts
-        open_f -= 0.75 * smoothstep(0.50, 0.62, t)   # gives in, closes
-        # startle awake near the loop end
-        open_f += 1.0 * smoothstep(0.90, 0.94, t)
-        open_f = max(0.0, min(1.0, open_f))
-        # awake blinks at t~0.08 and t~0.16
-        for bt in (0.08, 0.16):
-            if abs(t - bt) < 0.022:
-                open_f *= abs(t - bt) / 0.022
-        # sleeping breath
-        if 0.62 <= t < 0.90:
-            open_f += 0.03 * math.sin((t - 0.62) * 2 * math.pi * 3)
-        # small overshoot right after startle
-        if 0.94 <= t < 1.0:
-            open_f = 1.0 + 0.08 * math.sin((t - 0.94) * math.pi / 0.06)
+        # blinks: two singles, one quick double (uneven rhythm reads alive)
+        for bt in (0.12, 0.38, 0.80, 0.86):
+            if abs(t - bt) < 0.018:
+                open_f *= abs(t - bt) / 0.018
+        # bored downward glance around the middle of the loop
+        glance = smoothstep(0.52, 0.58, t) - smoothstep(0.64, 0.70, t)
+        # gentle breathing
+        breathe = 1.0 + 0.02 * math.sin(t * 2 * math.pi * 2)
 
-        drowse = 1.0 - smoothstep(0.90, 0.94, t)  # how far into the doze we are
-        sink = 10 * smoothstep(0.22, 0.62, t) * drowse
-        cy = 78 + sink
-        ry = max(6.0, 44 * open_f)
+        cy = 78 + 7 * glance
+        ry = max(4.0, 44 * open_f * (1.0 - 0.12 * glance)) * breathe
         img = canvas(); d = ImageDraw.Draw(img)
-        E(d, 72, cy, 46, ry, BLOB)
+        E(d, 72, cy, 45 * breathe, ry, BLOB)
+        frames.append(down(img))
+    return frames
 
-        # dream bubbles while asleep: two circles rising and fading
-        if 0.64 <= t < 0.90:
-            for k, phase in enumerate((0.0, 0.5)):
-                bp = ((t - 0.64) / 0.26 + phase) % 1.0
-                bx = 95 + 6 * math.sin(bp * math.pi * 2 + k)
-                by = (cy - 22) - 44 * bp
-                br = 5 + 4 * bp
-                # encoder alpha is binary, so fade via brightness (bg is black)
-                dim = 1 - 0.8 * bp
-                E(d, bx, by, br, br, (int(BLOB[0] * dim), int(BLOB[1] * dim), int(BLOB[2] * dim), 255))
+
+# ---------------------------------------------------------------- attentive
+# Listening look: a steady, fully open eye. Deliberately static ("just glow") —
+# no blinking, so the screen doesn't flicker while the cat listens; the listen
+# wave indicator on top is the only motion.
+def gen_attentive(n=2):
+    frames = []
+    for _ in range(n):
+        img = canvas(); d = ImageDraw.Draw(img)
+        E(d, 72, 78, 46, 45, BLOB)
         frames.append(down(img))
     return frames
 
@@ -293,6 +284,7 @@ def gen_dozing(n=200):
 GENERATORS = {
     "happy_soft": gen_happy_soft,
     "dozing": gen_dozing,
+    "attentive": gen_attentive,
     "laughing": gen_laughing,
     "funny": gen_funny,
     "loving": gen_loving,

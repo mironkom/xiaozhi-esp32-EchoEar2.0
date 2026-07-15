@@ -37,6 +37,7 @@ private:
 
     emote_handle_t emote_handle_ = nullptr;
     bool is_standby_ = false;
+    bool is_listening_ = false;
 
 };
 
