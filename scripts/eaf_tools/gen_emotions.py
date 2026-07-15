@@ -1,0 +1,240 @@
+"""Generate 9 unique left-eye animations in the original EchoEar visual language.
+
+Rules learned from the originals:
+- Canvas is 125x160 and holds ONE eye (the LEFT one). The firmware mirrors it
+  for the right eye (layout.json: eye_anim mirror="auto"), so designs must be
+  a single shape, complete inside the canvas (nothing may run off an edge).
+- Original neutral eye: circle centered ~(73,78), r~51. Other emotes keep
+  roughly that mass and position.
+- Palette: blob (230,246,254), dark pupil/details (25,27,30), pink (254,182,182).
+"""
+import math, sys
+from pathlib import Path
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from PIL import Image, ImageDraw
+from eaf_encode import encode_eaf
+
+W, H = 125, 160
+SS = 4  # supersampling
+BLOB = (230, 246, 254, 255)
+DARK = (25, 27, 30, 255)
+PINK = (254, 182, 182, 255)
+CX, CY = 73, 78          # original eye center
+FPS = 20
+
+OUT_DIR = Path(__file__).resolve().parents[2] / "main" / "boards" / "ostb-echoear-2st" / "emoji"
+OUT_DIR.mkdir(parents=True, exist_ok=True)
+
+
+def canvas():
+    return Image.new("RGBA", (W * SS, H * SS), (0, 0, 0, 0))
+
+
+def down(img):
+    return img.resize((W, H), Image.LANCZOS)
+
+
+def E(d, cx, cy, rx, ry, fill):
+    d.ellipse([(cx - rx) * SS, (cy - ry) * SS, (cx + rx) * SS, (cy + ry) * SS], fill=fill)
+
+
+def ease(t):
+    return 0.5 - 0.5 * math.cos(t * 2 * math.pi)
+
+
+# ---------------------------------------------------------------- laughing
+# Closed-eye "smile arc" that bounces and squashes, like shaking with laughter.
+def gen_laughing(n=16):
+    frames = []
+    for i in range(n):
+        t = i / n
+        squash = 1.0 + 0.14 * math.sin(t * 2 * math.pi * 2)   # two "ha-ha" per loop
+        bob = -5 * abs(math.sin(t * 2 * math.pi * 2))
+        img = canvas(); d = ImageDraw.Draw(img)
+        rx, ry = 47, 46 * squash
+        cy = CY + bob
+        # thick arc: outer dome minus inner dome minus lower half
+        E(d, CX, cy, rx, ry, BLOB)
+        E(d, CX, cy + 12, rx - 22, ry - 16, (0, 0, 0, 0))
+        d.rectangle([0, (cy + ry * 0.30) * SS, W * SS, H * SS], fill=(0, 0, 0, 0))
+        frames.append(down(img))
+    return frames
+
+
+# ---------------------------------------------------------------- funny
+# Playful eye with a little satellite dot orbiting around it.
+def gen_funny(n=16):
+    frames = []
+    for i in range(n):
+        t = i / n
+        img = canvas(); d = ImageDraw.Draw(img)
+        E(d, 70, 80, 38, 38, BLOB)
+        a = t * 2 * math.pi
+        ox = 70 + math.cos(a) * 32
+        oy = 80 + math.sin(a) * 46
+        E(d, ox, oy, 9, 9, BLOB)
+        frames.append(down(img))
+    return frames
+
+
+# ---------------------------------------------------------------- loving
+# The whole eye becomes a heart, pulsing like a heartbeat (two quick thumps).
+def heart_pts(cx, cy, size):
+    pts = []
+    for deg in range(0, 360, 3):
+        a = math.radians(deg)
+        x = 16 * math.sin(a) ** 3
+        y = -(13 * math.cos(a) - 5 * math.cos(2 * a) - 2 * math.cos(3 * a) - math.cos(4 * a))
+        pts.append(((cx + x * size / 16) * SS, (cy + y * size / 16) * SS))
+    return pts
+
+
+def gen_loving(n=20):
+    frames = []
+    for i in range(n):
+        t = i / n
+        # heartbeat: thump-thump then rest
+        beat = math.exp(-((t - 0.15) ** 2) / 0.004) + 0.8 * math.exp(-((t - 0.40) ** 2) / 0.004)
+        size = 42 + 6 * beat
+        img = canvas(); d = ImageDraw.Draw(img)
+        d.polygon(heart_pts(70, 76, size), fill=BLOB)
+        frames.append(down(img))
+    return frames
+
+
+# ---------------------------------------------------------------- embarrassed
+# Shy eye glancing down, with a pink blush on the cheek fading in and out.
+def gen_embarrassed(n=20):
+    frames = []
+    for i in range(n):
+        t = i / n
+        shy = ease(t)
+        img = canvas(); d = ImageDraw.Draw(img)
+        E(d, 73, 72 + 6 * shy, 44, 44 - 6 * shy, BLOB)
+        blush_a = int(120 + 130 * shy)
+        E(d, 70, 136, 27, 10, (PINK[0], PINK[1], PINK[2], blush_a))
+        frames.append(down(img))
+    return frames
+
+
+# ---------------------------------------------------------------- confident
+# Smug half-lidded eye: a heavy flat lid sits low over the circle.
+def gen_confident(n=20):
+    frames = []
+    for i in range(n):
+        t = i / n
+        lid = 34 + 8 * ease(t)   # lid slides a little lower, then back up
+        img = canvas(); d = ImageDraw.Draw(img)
+        E(d, 73, 82, 48, 48, BLOB)
+        d.rectangle([0, 0, W * SS, (82 - 48 + lid) * SS], fill=(0, 0, 0, 0))
+        frames.append(down(img))
+    return frames
+
+
+# ---------------------------------------------------------------- delicious
+# Wobbling content eye with a drop of drool slipping down and pulling back.
+def gen_delicious(n=20):
+    frames = []
+    for i in range(n):
+        t = i / n
+        wob = 1.0 + 0.05 * math.sin(t * 2 * math.pi * 2)
+        drip = ease(t)
+        img = canvas(); d = ImageDraw.Draw(img)
+        E(d, 73, 74, 46 * wob, 46 / wob, BLOB)
+        # drool drop under the inner corner
+        dx, dy0 = 50, 110
+        dlen = 8 + 26 * drip
+        dw = 9 - 3 * drip
+        d.polygon([(dx * SS, (dy0 - 4) * SS),
+                   ((dx - dw) * SS, (dy0 + dlen * 0.45) * SS),
+                   (dx * SS, (dy0 + dlen) * SS),
+                   ((dx + dw) * SS, (dy0 + dlen * 0.45) * SS)], fill=BLOB)
+        E(d, dx, dy0 + dlen, dw, dw * 1.2, BLOB)
+        frames.append(down(img))
+    return frames
+
+
+# ---------------------------------------------------------------- silly
+# Googly eye: dark pupil rolling a full loop around the inside edge.
+def gen_silly(n=16):
+    frames = []
+    for i in range(n):
+        t = i / n
+        img = canvas(); d = ImageDraw.Draw(img)
+        E(d, 73, 78, 48, 48, BLOB)
+        a = t * 2 * math.pi - math.pi / 2
+        px = 73 + math.cos(a) * 29
+        py = 78 + math.sin(a) * 29
+        E(d, px, py, 15, 15, DARK)
+        frames.append(down(img))
+    return frames
+
+
+# ---------------------------------------------------------------- surprised
+# Eye pops wide while the pupil shrinks to a point, with a tiny tremble.
+def gen_surprised(n=16):
+    frames = []
+    for i in range(n):
+        t = i / n
+        pop = math.exp(-t * 3.5)            # strong at loop start, relaxes
+        jit = 1.5 * math.sin(t * 2 * math.pi * 4) * pop
+        img = canvas(); d = ImageDraw.Draw(img)
+        r = 42 + 7 * pop
+        E(d, 72 + jit, 78, r, r, BLOB)
+        pr = 16 - 8 * pop
+        E(d, 72 + jit, 78, pr, pr, DARK)
+        frames.append(down(img))
+    return frames
+
+
+# ---------------------------------------------------------------- relaxed
+# Heavy-lidded calm eye slowly "breathing" — almost closed, soft and wide.
+def gen_relaxed(n=24):
+    frames = []
+    for i in range(n):
+        t = i / n
+        breathe = ease(t)
+        img = canvas(); d = ImageDraw.Draw(img)
+        h = 21 + 7 * breathe
+        cy = 92 - 3 * breathe
+        d.rounded_rectangle([(72 - 49) * SS, int((cy - h) * SS), (72 + 49) * SS, int((cy + h) * SS)],
+                            radius=int(h * SS) - 2, fill=BLOB)
+        # domed top: soft bulge in the middle
+        E(d, 72, cy - h + 4, 34, 12 + 4 * breathe, BLOB)
+        frames.append(down(img))
+    return frames
+
+
+GENERATORS = {
+    "laughing": gen_laughing,
+    "funny": gen_funny,
+    "loving": gen_loving,
+    "embarrassed": gen_embarrassed,
+    "confident": gen_confident,
+    "delicious": gen_delicious,
+    "silly": gen_silly,
+    "surprised": gen_surprised,
+    "relaxed": gen_relaxed,
+}
+
+if __name__ == "__main__":
+    import numpy as np
+    for name, fn in GENERATORS.items():
+        frames = fn()
+        # bounds check: no content may touch the outer 2px ring (would look cut)
+        minx, miny, maxx, maxy = 999, 999, -1, -1
+        for fr in frames:
+            arr = np.array(fr.convert("L"))
+            ys, xs = (arr > 3).nonzero()
+            if len(xs):
+                minx = min(minx, xs.min()); maxx = max(maxx, xs.max())
+                miny = min(miny, ys.min()); maxy = max(maxy, ys.max())
+        clipped = maxx >= W - 1 or minx <= 0 or maxy >= H - 1 or miny <= 0
+        rgb_frames = []
+        for fr in frames:
+            rgb_frames.append(fr)
+        data = encode_eaf(frames, fps=FPS)
+        out_path = OUT_DIR / f"{name}.eaf"
+        out_path.write_bytes(data)
+        flag = "  !! TOUCHES EDGE" if clipped else ""
+        print(f"{name:12s} {len(frames):2d} frames  bbox x:[{minx},{maxx}] y:[{miny},{maxy}]  {len(data):6d} bytes{flag}")
