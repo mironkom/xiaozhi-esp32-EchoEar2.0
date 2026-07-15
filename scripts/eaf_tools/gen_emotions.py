@@ -154,24 +154,27 @@ def gen_confident(n=20):
 
 
 # ---------------------------------------------------------------- delicious
-# Wobbling content eye with a drop of drool slipping down and pulling back.
+# "Stars in the eyes": a dark four-point star pupil twinkles (pulses and
+# slowly rotates) inside a gently wobbling delighted eye.
+def star_pts(cx, cy, r_out, r_in, rot):
+    pts = []
+    for k in range(8):
+        a = rot + k * math.pi / 4
+        r = r_out if k % 2 == 0 else r_in
+        pts.append(((cx + math.cos(a) * r) * SS, (cy + math.sin(a) * r) * SS))
+    return pts
+
+
 def gen_delicious(n=20):
     frames = []
     for i in range(n):
         t = i / n
-        wob = 1.0 + 0.05 * math.sin(t * 2 * math.pi * 2)
-        drip = ease(t)
+        wob = 1.0 + 0.04 * math.sin(t * 2 * math.pi * 2)
+        twinkle = 1.0 + 0.22 * math.sin(t * 2 * math.pi * 2)
+        rot = -math.pi / 2 + 0.25 * math.sin(t * 2 * math.pi)
         img = canvas(); d = ImageDraw.Draw(img)
-        E(d, 73, 74, 46 * wob, 46 / wob, BLOB)
-        # drool drop under the inner corner
-        dx, dy0 = 50, 110
-        dlen = 8 + 26 * drip
-        dw = 9 - 3 * drip
-        d.polygon([(dx * SS, (dy0 - 4) * SS),
-                   ((dx - dw) * SS, (dy0 + dlen * 0.45) * SS),
-                   (dx * SS, (dy0 + dlen) * SS),
-                   ((dx + dw) * SS, (dy0 + dlen * 0.45) * SS)], fill=BLOB)
-        E(d, dx, dy0 + dlen, dw, dw * 1.2, BLOB)
+        E(d, 72, 78, 46 * wob, 46 / wob, BLOB)
+        d.polygon(star_pts(72, 78, 26 * twinkle, 9 * twinkle, rot), fill=DARK)
         frames.append(down(img))
     return frames
 
