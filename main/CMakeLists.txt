@@ -1156,6 +1156,23 @@ if(CONFIG_BOARD_TYPE_ESP_VOCAT OR CONFIG_BOARD_TYPE_OSTB_ECHOEAR_2ST)
             file(GLOB OSTB_EMOJI_FILES "${CMAKE_CURRENT_SOURCE_DIR}/boards/ostb-echoear-2st/emoji/*.eaf")
             file(COPY ${OSTB_EMOJI_FILES} DESTINATION "${ESP_VOCAT_ASSETS_STAGING}/emoji_large")
             set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS ${OSTB_EMOJI_FILES})
+            # Pack the menuconfig-selected wake word (CONFIG_SR_WN_*) and stage
+            # it so the assets builder uses it instead of the prebuilt
+            # srmodels.bin from esp_emote_assets (which is fixed to nihaoxiaozhi).
+            if(ESP_SR_COMPONENT_PATH)
+                idf_build_get_property(OSTB_SDKCONFIG SDKCONFIG)
+                execute_process(
+                    COMMAND python "${ESP_SR_COMPONENT_PATH}/model/movemodel.py"
+                            -d1 "${OSTB_SDKCONFIG}" -d2 "${ESP_SR_COMPONENT_PATH}" -d3 "${CMAKE_BINARY_DIR}"
+                    RESULT_VARIABLE OSTB_MVMODEL_RESULT)
+                if(OSTB_MVMODEL_RESULT EQUAL 0 AND EXISTS "${CMAKE_BINARY_DIR}/srmodels/srmodels.bin")
+                    file(MAKE_DIRECTORY "${ESP_VOCAT_ASSETS_STAGING}/wakenet")
+                    file(COPY "${CMAKE_BINARY_DIR}/srmodels/srmodels.bin"
+                         DESTINATION "${ESP_VOCAT_ASSETS_STAGING}/wakenet")
+                else()
+                    message(WARNING "movemodel.py failed (${OSTB_MVMODEL_RESULT}); assets will keep the prebuilt wake word model")
+                endif()
+            endif()
         endif()
     else()
         message(WARNING "esp_emote_assets component not found; ESP-VoCat custom emotes will be skipped")
