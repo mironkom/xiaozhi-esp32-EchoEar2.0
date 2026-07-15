@@ -19,9 +19,56 @@
 #include "display/emote_display.h"
 #include "i2c_device.h"
 #include "led/gpio_led.h"
+#include "mcp_server.h"
+#include "power_save_timer.h"
 #include "wifi_board.h"
 
 #define TAG "OstbEchoEar2st"
+
+namespace {
+
+std::string UrlEncode(const std::string& s) {
+    static const char hex[] = "0123456789ABCDEF";
+    std::string out;
+    out.reserve(s.size() * 3);
+    for (unsigned char c : s) {
+        if (isalnum(c) || c == '-' || c == '_' || c == '.' || c == '~') {
+            out += c;
+        } else {
+            out += '%';
+            out += hex[c >> 4];
+            out += hex[c & 0x0F];
+        }
+    }
+    return out;
+}
+
+const char* WmoToRussian(int code) {
+    switch (code) {
+        case 0: return "ясно";
+        case 1: return "преимущественно ясно";
+        case 2: return "переменная облачность";
+        case 3: return "пасмурно";
+        case 45: case 48: return "туман";
+        case 51: case 53: case 55: return "морось";
+        case 56: case 57: return "ледяная морось";
+        case 61: return "небольшой дождь";
+        case 63: return "дождь";
+        case 65: return "сильный дождь";
+        case 66: case 67: return "ледяной дождь";
+        case 71: return "небольшой снег";
+        case 73: return "снег";
+        case 75: return "сильный снег";
+        case 77: return "снежная крупа";
+        case 80: case 81: case 82: return "ливень";
+        case 85: case 86: return "снегопад";
+        case 95: return "гроза";
+        case 96: case 99: return "гроза с градом";
+        default: return "без осадков";
+    }
+}
+
+}  // namespace
 
 // Panel init sequence carried over from ESP-VoCat (same 1.85" 360x360
 // ST77916 round LCD module family).
@@ -302,6 +349,7 @@ private:
     Cst816s* cst816s_ = nullptr;
     TaskHandle_t touch_task_handle_ = nullptr;
     AdcBatteryMonitor* battery_monitor_ = nullptr;
+    PowerSaveTimer* power_save_timer_ = nullptr;
     Button boot_button_;
 
     static void touch_isr_callback(void* arg) {
@@ -424,6 +472,227 @@ private:
         backlight_->RestoreBrightness();
     }
 
+    std::string WikiApiGet(const std::string& params) {
+        auto http = GetNetwork()->CreateHttp(0);
+        http->SetTimeout(8000);
+        http->SetHeader("User-Agent", "xiaozhi-esp32/2.2.6 (ostb-echoear-2st)");
+        std::string url = "https://ru.wikipedia.org/w/api.php?format=json&utf8=1&" + params;
+        if (!http->Open("GET", url)) {
+            http->Close();
+            return "";
+        }
+        int status = http->GetStatusCode();
+        std::string body = http->ReadAll();
+        http->Close();
+        return status == 200 ? body : "";
+    }
+
+    std::string DoWikipediaSearch(const std::string& query, int max_results) {
+        std::string body = WikiApiGet("action=query&list=search&srlimit="
+                                      + std::to_string(max_results) + "&srsearch=" + UrlEncode(query));
+        if (body.empty()) {
+            return "Ошибка: Википедия сейчас недоступна.";
+        }
+
+        cJSON* root = cJSON_Parse(body.c_str());
+        if (root == nullptr) return "Ошибка: некорректный ответ Википедии.";
+        cJSON* q = cJSON_GetObjectItem(root, "query");
+        cJSON* search = q ? cJSON_GetObjectItem(q, "search") : nullptr;
+        int n = search ? cJSON_GetArraySize(search) : 0;
+        if (n == 0) {
+            cJSON_Delete(root);
+            return "В Википедии по запросу «" + query + "» ничего не найдено.";
+        }
+
+        int top_pageid = 0;
+        std::string top_title;
+        std::string others;
+        for (int i = 0; i < n; i++) {
+            cJSON* item = cJSON_GetArrayItem(search, i);
+            cJSON* title = cJSON_GetObjectItem(item, "title");
+            if (!cJSON_IsString(title)) continue;
+            if (i == 0) {
+                top_title = title->valuestring;
+                top_pageid = cJSON_GetObjectItem(item, "pageid")->valueint;
+            } else {
+                if (!others.empty()) others += "; ";
+                others += title->valuestring;
+            }
+        }
+        cJSON_Delete(root);
+
+        // Pull the intro of the best match so the assistant has real content.
+        std::string extract;
+        body = WikiApiGet("action=query&prop=extracts&exintro=1&explaintext=1&redirects=1&pageids="
+                          + std::to_string(top_pageid));
+        if (!body.empty()) {
+            root = cJSON_Parse(body.c_str());
+            if (root != nullptr) {
+                cJSON* pages = cJSON_GetObjectItem(cJSON_GetObjectItem(root, "query"), "pages");
+                cJSON* page = pages ? pages->child : nullptr;
+                cJSON* ext = page ? cJSON_GetObjectItem(page, "extract") : nullptr;
+                if (cJSON_IsString(ext)) extract = ext->valuestring;
+                cJSON_Delete(root);
+            }
+        }
+        constexpr size_t kMaxExtract = 1500;
+        if (extract.size() > kMaxExtract) {
+            size_t cut = kMaxExtract;
+            while (cut > 0 && (extract[cut] & 0xC0) == 0x80) cut--;  // keep UTF-8 intact
+            extract.resize(cut);
+            extract += "…";
+        }
+
+        std::string out = "Статья: " + top_title + "\n";
+        out += extract.empty() ? "(краткое описание недоступно)" : extract;
+        if (!others.empty()) {
+            out += "\n\nДругие статьи по теме: " + others;
+        }
+        return out;
+    }
+
+    std::string DoGetWeather(const std::string& city, int days) {
+        // Geocode the city name first (Open-Meteo, free, no API key).
+        auto http = GetNetwork()->CreateHttp(0);
+        http->SetTimeout(8000);
+        std::string geo_url = "https://geocoding-api.open-meteo.com/v1/search?count=1&language=ru&format=json&name="
+                              + UrlEncode(city);
+        if (!http->Open("GET", geo_url)) {
+            http->Close();
+            return "Ошибка: сервис геокодирования недоступен.";
+        }
+        std::string geo_body = http->ReadAll();
+        http->Close();
+
+        double lat = 0, lon = 0;
+        std::string place = city;
+        {
+            cJSON* root = cJSON_Parse(geo_body.c_str());
+            if (root == nullptr) return "Ошибка: некорректный ответ геокодирования.";
+            cJSON* results = cJSON_GetObjectItem(root, "results");
+            cJSON* first = results ? cJSON_GetArrayItem(results, 0) : nullptr;
+            if (first == nullptr) {
+                cJSON_Delete(root);
+                return "Не нашёл город «" + city + "». Уточни название.";
+            }
+            lat = cJSON_GetObjectItem(first, "latitude")->valuedouble;
+            lon = cJSON_GetObjectItem(first, "longitude")->valuedouble;
+            cJSON* name = cJSON_GetObjectItem(first, "name");
+            if (cJSON_IsString(name)) place = name->valuestring;
+            cJSON_Delete(root);
+        }
+
+        char fc_url[512];
+        snprintf(fc_url, sizeof(fc_url),
+                 "https://api.open-meteo.com/v1/forecast?latitude=%.4f&longitude=%.4f"
+                 "&current=temperature_2m,apparent_temperature,relative_humidity_2m,wind_speed_10m,weather_code"
+                 "&daily=weather_code,temperature_2m_max,temperature_2m_min"
+                 "&timezone=auto&wind_speed_unit=ms&forecast_days=%d", lat, lon, days);
+        http = GetNetwork()->CreateHttp(0);
+        http->SetTimeout(8000);
+        if (!http->Open("GET", fc_url)) {
+            http->Close();
+            return "Ошибка: сервис погоды недоступен.";
+        }
+        std::string fc_body = http->ReadAll();
+        http->Close();
+
+        cJSON* root = cJSON_Parse(fc_body.c_str());
+        if (root == nullptr) return "Ошибка: некорректный ответ сервиса погоды.";
+
+        char line[192];
+        std::string out = "Погода, " + place + ". ";
+        cJSON* cur = cJSON_GetObjectItem(root, "current");
+        if (cur != nullptr) {
+            snprintf(line, sizeof(line),
+                     "Сейчас %.0f°C (ощущается как %.0f°C), %s, ветер %.0f м/с, влажность %.0f%%. ",
+                     cJSON_GetObjectItem(cur, "temperature_2m")->valuedouble,
+                     cJSON_GetObjectItem(cur, "apparent_temperature")->valuedouble,
+                     WmoToRussian(cJSON_GetObjectItem(cur, "weather_code")->valueint),
+                     cJSON_GetObjectItem(cur, "wind_speed_10m")->valuedouble,
+                     cJSON_GetObjectItem(cur, "relative_humidity_2m")->valuedouble);
+            out += line;
+        }
+        cJSON* daily = cJSON_GetObjectItem(root, "daily");
+        if (daily != nullptr) {
+            cJSON* dates = cJSON_GetObjectItem(daily, "time");
+            cJSON* codes = cJSON_GetObjectItem(daily, "weather_code");
+            cJSON* tmax = cJSON_GetObjectItem(daily, "temperature_2m_max");
+            cJSON* tmin = cJSON_GetObjectItem(daily, "temperature_2m_min");
+            int n = dates ? cJSON_GetArraySize(dates) : 0;
+            for (int i = 0; i < n; i++) {
+                snprintf(line, sizeof(line), "%s: от %.0f до %.0f°C, %s. ",
+                         cJSON_GetArrayItem(dates, i)->valuestring,
+                         cJSON_GetArrayItem(tmin, i)->valuedouble,
+                         cJSON_GetArrayItem(tmax, i)->valuedouble,
+                         WmoToRussian(cJSON_GetArrayItem(codes, i)->valueint));
+                out += line;
+            }
+        }
+        cJSON_Delete(root);
+        return out;
+    }
+
+    void InitializeTools() {
+        auto& mcp_server = McpServer::GetInstance();
+        // Wikipedia only — the device has no general web search. If the user
+        // asks to "search the internet", tell them you can't, but offer to
+        // look it up in Wikipedia instead; don't silently substitute.
+        mcp_server.AddTool("self.wikipedia_search",
+            "Look something up in Russian Wikipedia: facts, definitions, people, history, "
+            "science, places, technology, concepts. This is NOT a general web search — it "
+            "only covers Wikipedia. If the user explicitly wants a general internet search or "
+            "current news, tell them the device can't do that, but offer Wikipedia instead. "
+            "Returns the intro of the best-matching article plus related article titles. "
+            "Query works best in Russian.",
+            PropertyList({
+                Property("query", kPropertyTypeString),
+                Property("max_results", kPropertyTypeInteger, 5, 1, 8)
+            }),
+            [this](const PropertyList& properties) -> ReturnValue {
+                return DoWikipediaSearch(properties["query"].value<std::string>(),
+                                         properties["max_results"].value<int>());
+            });
+
+        mcp_server.AddTool("self.get_weather",
+            "Get current weather and forecast for a city (worldwide, city name in any language). "
+            "Returns temperature, conditions, wind, humidity and a daily forecast, in Russian.",
+            PropertyList({
+                Property("city", kPropertyTypeString),
+                Property("days", kPropertyTypeInteger, 2, 1, 7)
+            }),
+            [this](const PropertyList& properties) -> ReturnValue {
+                return DoGetWeather(properties["city"].value<std::string>(),
+                                    properties["days"].value<int>());
+            });
+    }
+
+    void InitializePowerSaveTimer() {
+        // Visual-only sleep after 2 min idle: the cat closes its eyes and the
+        // backlight dims. cpu_max_freq=-1 keeps wake word detection running,
+        // so "小智" (or a tap) still wakes it; the app then raises the power
+        // save level and SetPowerSaveLevel() below exits sleep.
+        power_save_timer_ = new PowerSaveTimer(-1, 120);
+        power_save_timer_->OnEnterSleepMode([this]() {
+            if (display_ != nullptr) {
+                display_->SetEmotion("sleepy");
+            }
+            if (backlight_ != nullptr) {
+                backlight_->SetBrightness(5);
+            }
+        });
+        power_save_timer_->OnExitSleepMode([this]() {
+            if (display_ != nullptr) {
+                // EmoteDisplay remaps neutral to the dozing idle loop in standby
+                display_->SetEmotion("neutral");
+            }
+            if (backlight_ != nullptr) {
+                backlight_->RestoreBrightness();
+            }
+        });
+        power_save_timer_->SetEnabled(true);
+    }
+
     void InitializeButtons() {
         boot_button_.OnClick([this]() {
             auto &app = Application::GetInstance();
@@ -445,9 +714,20 @@ public:
         InitializeSt77916Display();
         InitializeCst816sTouchPad();
         InitializeButtons();
+        InitializeTools();
+        InitializePowerSaveTimer();
         // VBAT via a 100K/100K divider on GPIO17 (ADC2_CH6); the charge
         // detect net from the schematic is not mapped to a GPIO yet.
         battery_monitor_ = new AdcBatteryMonitor(ADC_UNIT_2, ADC_CHANNEL_6, 100000, 100000, GPIO_NUM_NC);
+    }
+
+    virtual void SetPowerSaveLevel(PowerSaveLevel level) override {
+        // The app raises the level on any activity (wake word, touch chat,
+        // server events) — treat that as "wake the sleeping cat".
+        if (level != PowerSaveLevel::LOW_POWER && power_save_timer_ != nullptr) {
+            power_save_timer_->WakeUp();
+        }
+        WifiBoard::SetPowerSaveLevel(level);
     }
 
     virtual AudioCodec* GetAudioCodec() override {
