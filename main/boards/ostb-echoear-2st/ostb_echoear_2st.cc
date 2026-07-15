@@ -18,6 +18,7 @@
 #include "display/lcd_display.h"
 #include "display/emote_display.h"
 #include "i2c_device.h"
+#include "led/gpio_led.h"
 #include "wifi_board.h"
 
 #define TAG "OstbEchoEar2st"
@@ -482,6 +483,12 @@ public:
         charging = battery_monitor_->IsCharging();
         discharging = battery_monitor_->IsDischarging();
         return true;
+    }
+
+    virtual Led* GetLed() override {
+        // SYSTEM_LED drives the green LED through an NPN transistor (active high).
+        static GpioLed led(SYSTEM_LED_GPIO);
+        return &led;
     }
 };
 

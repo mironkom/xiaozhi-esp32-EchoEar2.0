@@ -1124,6 +1124,11 @@ if(XIAOZHI_FONTS_COMPONENT_PATH)
 endif()
 
 if(CONFIG_BOARD_TYPE_ESP_VOCAT OR CONFIG_BOARD_TYPE_OSTB_ECHOEAR_2ST)
+    if(CONFIG_BOARD_TYPE_OSTB_ECHOEAR_2ST)
+        set(EMOTE_JSON_SOURCE "${CMAKE_CURRENT_SOURCE_DIR}/boards/ostb-echoear-2st/assets/360_360/emote.json")
+    else()
+        set(EMOTE_JSON_SOURCE "${CMAKE_CURRENT_SOURCE_DIR}/boards/esp-vocat/assets/360_360/emote.json")
+    endif()
     find_component_by_pattern("esp_emote_assets" EMOTE_ASSETS_COMPONENT EMOTE_ASSETS_PATH)
     if(EMOTE_ASSETS_PATH)
         file(REMOVE_RECURSE "${ESP_VOCAT_ASSETS_STAGING}")
@@ -1135,14 +1140,14 @@ if(CONFIG_BOARD_TYPE_ESP_VOCAT OR CONFIG_BOARD_TYPE_OSTB_ECHOEAR_2ST)
         file(MAKE_DIRECTORY "${ESP_VOCAT_ASSETS_STAGING}/emoji_large")
         file(COPY "${EMOTE_ASSETS_PATH}/emoji_large/" DESTINATION "${ESP_VOCAT_ASSETS_STAGING}/emoji_large")
         file(COPY "${EMOTE_ASSETS_PATH}/360_360/layout.json" DESTINATION "${ESP_VOCAT_ASSETS_STAGING}/360_360")
-        file(COPY "${CMAKE_CURRENT_SOURCE_DIR}/boards/esp-vocat/assets/360_360/emote.json"
+        file(COPY "${EMOTE_JSON_SOURCE}"
              DESTINATION "${ESP_VOCAT_ASSETS_STAGING}/360_360")
         file(COPY "${CMAKE_CURRENT_SOURCE_DIR}/boards/esp-vocat/emoji/low_battery.eaf"
              DESTINATION "${ESP_VOCAT_ASSETS_STAGING}/emoji_large")
         file(COPY "${CMAKE_CURRENT_SOURCE_DIR}/boards/esp-vocat/emoji/battery_connected.eaf"
              DESTINATION "${ESP_VOCAT_ASSETS_STAGING}/emoji_large")
         set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS
-            "${CMAKE_CURRENT_SOURCE_DIR}/boards/esp-vocat/assets/360_360/emote.json"
+            "${EMOTE_JSON_SOURCE}"
             "${CMAKE_CURRENT_SOURCE_DIR}/boards/esp-vocat/emoji/low_battery.eaf"
             "${CMAKE_CURRENT_SOURCE_DIR}/boards/esp-vocat/emoji/battery_connected.eaf"
         )
