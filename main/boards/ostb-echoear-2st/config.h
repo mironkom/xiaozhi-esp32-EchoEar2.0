@@ -35,6 +35,22 @@
 #define QSPI_PIN_NUM_LCD_BL      GPIO_NUM_41
 #define TP_PIN_NUM_INT           GPIO_NUM_42
 
+#define QSPI_LCD_HOST            SPI2_HOST
+#define QSPI_LCD_H_RES           (360)
+#define QSPI_LCD_V_RES           (360)
+#define QSPI_LCD_BIT_PER_PIXEL   (16)
+
+#define DISPLAY_WIDTH            360
+#define DISPLAY_HEIGHT           360
+#define DISPLAY_MIRROR_X         false
+#define DISPLAY_MIRROR_Y         false
+#define DISPLAY_SWAP_XY          false
+#define DISPLAY_OFFSET_X         0
+#define DISPLAY_OFFSET_Y         0
+
+#define DISPLAY_BACKLIGHT_PIN           QSPI_PIN_NUM_LCD_BL
+#define DISPLAY_BACKLIGHT_OUTPUT_INVERT false
+
 #define BAT_DET_PIN              GPIO_NUM_17
 #define SYSTEM_LED_GPIO          GPIO_NUM_46
 

@@ -4,7 +4,10 @@
         {
             "name": "ostb-echoear-2st",
             "sdkconfig_append": [
-                "CONFIG_LANGUAGE_RU_RU=y"
+                "CONFIG_LANGUAGE_RU_RU=y",
+                "CONFIG_USE_EMOTE_MESSAGE_STYLE=y",
+                "CONFIG_MMAP_FILE_NAME_LENGTH=32",
+                "CONFIG_FLASH_EXPRESSION_ASSETS=y"
             ]
         }
     ]
