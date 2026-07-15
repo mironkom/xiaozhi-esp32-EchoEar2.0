@@ -1151,6 +1151,12 @@ if(CONFIG_BOARD_TYPE_ESP_VOCAT OR CONFIG_BOARD_TYPE_OSTB_ECHOEAR_2ST)
             "${CMAKE_CURRENT_SOURCE_DIR}/boards/esp-vocat/emoji/low_battery.eaf"
             "${CMAKE_CURRENT_SOURCE_DIR}/boards/esp-vocat/emoji/battery_connected.eaf"
         )
+        if(CONFIG_BOARD_TYPE_OSTB_ECHOEAR_2ST)
+            # Board-specific unique emotion animations (replace Happy.eaf reuse)
+            file(GLOB OSTB_EMOJI_FILES "${CMAKE_CURRENT_SOURCE_DIR}/boards/ostb-echoear-2st/emoji/*.eaf")
+            file(COPY ${OSTB_EMOJI_FILES} DESTINATION "${ESP_VOCAT_ASSETS_STAGING}/emoji_large")
+            set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS ${OSTB_EMOJI_FILES})
+        endif()
     else()
         message(WARNING "esp_emote_assets component not found; ESP-VoCat custom emotes will be skipped")
     endif()
